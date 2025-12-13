@@ -100,7 +100,9 @@ class ParallaxScene {
     const index = this.layers.indexOf(layer);
     if (index > -1) {
       this.layers.splice(index, 1);
-      this.container.removeChild(layer.element);
+      if (layer.element && layer.element.parentNode === this.container) {
+        this.container.removeChild(layer.element);
+      }
     }
   }
   
@@ -137,7 +139,9 @@ class ParallaxScene {
    */
   clear() {
     this.layers.forEach(layer => {
-      this.container.removeChild(layer.element);
+      if (layer.element && layer.element.parentNode === this.container) {
+        this.container.removeChild(layer.element);
+      }
     });
     this.layers = [];
   }

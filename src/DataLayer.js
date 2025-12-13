@@ -129,9 +129,10 @@ class DataLayer extends ParallaxLayer {
     element.style.width = `${size}px`;
     element.style.height = `${size}px`;
     element.style.backgroundColor = color;
-    element.style.transform = 'translate(-50%, -50%)';
     element.style.transition = 'all 0.3s ease';
     
+    // Store base transform based on type
+    let baseTransform = 'translate(-50%, -50%)';
     switch (type) {
       case 'circle':
         element.style.borderRadius = '50%';
@@ -140,18 +141,21 @@ class DataLayer extends ParallaxLayer {
         element.style.borderRadius = '2px';
         break;
       case 'diamond':
-        element.style.transform = 'translate(-50%, -50%) rotate(45deg)';
+        baseTransform = 'translate(-50%, -50%) rotate(45deg)';
         break;
     }
     
+    element.style.transform = baseTransform;
+    element.dataset.baseTransform = baseTransform;
+    
     // Add hover effect
     element.addEventListener('mouseenter', () => {
-      element.style.transform = element.style.transform.replace('scale(1)', '') + ' scale(1.5)';
+      element.style.transform = `${element.dataset.baseTransform} scale(1.5)`;
       element.style.zIndex = '1000';
     });
     
     element.addEventListener('mouseleave', () => {
-      element.style.transform = element.style.transform.replace(' scale(1.5)', '');
+      element.style.transform = element.dataset.baseTransform;
       element.style.zIndex = 'auto';
     });
   }
