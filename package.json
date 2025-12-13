@@ -20,5 +20,8 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/West-Ben/ParaVi-"
+  },
+  "devDependencies": {
+    "playwright": "^1.57.0"
   }
 }

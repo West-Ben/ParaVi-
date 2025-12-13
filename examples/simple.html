@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ParaVi - Simple Example</title>
+  <link rel="stylesheet" href="../css/paravi.css">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: Arial, sans-serif;
+      background: #0a0e27;
+      color: white;
+    }
+    
+    #visualization {
+      width: 100vw;
+      height: 100vh;
+    }
+    
+    .title {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 15px;
+      border-radius: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="title">
+    <h1>Simple ParaVi Example</h1>
+    <p>Move your mouse to see the parallax effect</p>
+  </div>
+  
+  <div id="visualization" class="parallax-container"></div>
+  
+  <script type="module">
+    import { ParallaxScene, DataLayer } from '../src/index.js';
+    
+    // Create scene
+    const scene = new ParallaxScene('#visualization', {
+      parallaxStrength: 0.08,
+      smoothing: 0.15
+    });
+    
+    // Create sample data
+    const data = [];
+    for (let i = 0; i < 30; i++) {
+      data.push({
+        x: Math.random() * 100,
+        y: Math.random() * 100,
+        z: Math.random() * 100,
+        value: Math.random() * 100,
+        size: 10 + Math.random() * 15
+      });
+    }
+    
+    // Create three depth layers
+    const layers = [
+      { depth: 0.5, data: data.filter(d => d.z < 33) },
+      { depth: 1.0, data: data.filter(d => d.z >= 33 && d.z < 66) },
+      { depth: 1.5, data: data.filter(d => d.z >= 66) }
+    ];
+    
+    // Render each layer
+    layers.forEach(layerInfo => {
+      const dataLayer = new DataLayer({
+        depth: layerInfo.depth,
+        visualType: 'circle'
+      });
+      
+      dataLayer.renderData(layerInfo.data, {
+        x: 'x',
+        y: 'y',
+        color: 'value',
+        size: 'size'
+      });
+      
+      scene.addLayer(dataLayer);
+    });
+    
+    console.log('ParaVi initialized successfully!');
+    console.log(`Total layers: ${scene.layers.length}`);
+    console.log(`Total data points: ${data.length}`);
+  </script>
+</body>
+</html>
