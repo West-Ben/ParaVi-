@@ -1,0 +1,24 @@
+{
+  "name": "paravi",
+  "version": "0.1.0",
+  "description": "A web-based 2.5D parallax visualization framework for creating interactive, multi-dimensional data visualizations using layered 2D graphics",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "python3 -m http.server 8000",
+    "test": "echo \"No tests specified yet\" && exit 0"
+  },
+  "keywords": [
+    "visualization",
+    "parallax",
+    "2.5d",
+    "data-viz",
+    "interactive",
+    "web"
+  ],
+  "author": "",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/West-Ben/ParaVi-"
+  }
+}
