@@ -55,12 +55,22 @@ class DataLayer extends ParallaxLayer {
   calculateBounds(data, dimensions) {
     const bounds = {};
     
-    Object.keys(dimensions).forEach(key => {
-      const values = data.map(d => d[key]).filter(v => v !== undefined && v !== null);
-      bounds[key] = {
-        min: Math.min(...values),
-        max: Math.max(...values)
-      };
+    // dimensions is like { x: 'x', y: 'y', color: 'value', size: 'size' }
+    // We need to create bounds for each field name
+    Object.keys(dimensions).forEach(dimKey => {
+      const fieldName = dimensions[dimKey];
+      const values = data.map(d => d[fieldName]).filter(v => v !== undefined && v !== null);
+      if (values.length > 0) {
+        bounds[fieldName] = {
+          min: Math.min(...values),
+          max: Math.max(...values)
+        };
+      } else {
+        bounds[fieldName] = {
+          min: 0,
+          max: 1
+        };
+      }
     });
     
     return bounds;
