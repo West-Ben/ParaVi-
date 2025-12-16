@@ -4,7 +4,7 @@
   "description": "A web-based 2.5D parallax visualization framework for creating interactive, multi-dimensional data visualizations using layered 2D graphics",
   "main": "src/index.js",
   "scripts": {
-    "dev": "python3 -m http.server 8000",
+    "dev": "python -m http.server 8000",
     "test": "echo \"No tests specified yet\" && exit 0"
   },
   "keywords": [
