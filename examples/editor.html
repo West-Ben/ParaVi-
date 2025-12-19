@@ -760,7 +760,14 @@
       const chart = new window.Chart(canvas.getContext('2d'), config);
 
       chart.update();
-      state.snapshotCanvas = canvas;
+      const snapshotCanvas = document.createElement('canvas');
+      snapshotCanvas.width = canvas.width;
+      snapshotCanvas.height = canvas.height;
+      const snapshotContext = snapshotCanvas.getContext('2d');
+      if (snapshotContext) {
+        snapshotContext.drawImage(canvas, 0, 0);
+      }
+      state.snapshotCanvas = snapshotCanvas;
       chart.destroy();
 
       buildParallaxLayers();
