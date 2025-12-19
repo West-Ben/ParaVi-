@@ -11,6 +11,7 @@ A lightweight web-based framework for creating interactive 2.5-dimensional (2.5D
 - **Performance Optimized**: Uses CSS3 transforms and requestAnimationFrame for smooth 60fps animations
 - **Responsive**: Works on desktop and mobile devices with touch support
 - **Zero Dependencies**: Pure JavaScript with no external dependencies
+- **Chart.js Rendering Core**: Uses Chart.js for the canonical chart render before ParaVi applies parallax layering and overlays
 
 ## Quick Start
 
@@ -142,13 +143,47 @@ dataLayer.renderData(data, {
 
 ## Architecture
 
-ParaVi uses a layered architecture to simulate depth:
+ParaVi uses a layered architecture to simulate depth, now anchored around Chart.js as the primary renderer:
 
-1. **Background Layer** (depth: 0-0.5): Moves slowly, appears far away
-2. **Middle Layer** (depth: 0.5-1.0): Standard depth
-3. **Foreground Layer** (depth: 1.0-2.0): Moves quickly, appears close
+1. **Chart.js Baseline**: Every visualization begins as a standard Chart.js chart, ensuring consistent axis, labeling, and data binding semantics.
+2. **Canvas Snapshot Overlay**: An HTML5 canvas sits over the Chart.js canvas and immediately receives a drawn image (or sequence of images) of the chart state. This image becomes the texture that ParaVi manipulates.
+3. **Layered Parallax Stack**: That snapshot is duplicated into multiple image layers (`ChartLayer` objects) with slight design or data emphasis differences. Layers are stacked with background (depth 0-0.5), middle (0.5-1.0), and foreground (1.0-2.0) depth ranges to create the 2.5D illusion.
+4. **Parallax Controls Drive Layers**: Pointer/touch interactions update the parallax transform of each chart image layer so users feel the stacked images sliding over each other while the original Chart.js chart remains the authoritative data context underneath.
 
-Each layer's parallax effect is proportional to its depth value, creating the illusion of 3D space while remaining purely 2D.
+Each layer's parallax effect is proportional to its depth value, creating the illusion of 3D space while remaining purely 2D. Because the parallax controls now operate on the stacked chart images, interactions simultaneously preserve Chart.js interactivity (tooltips, selection) and provide depth-enhanced storytelling through the layered canvases.
+
+### Chart Layer JSON Model
+
+Define chart imagery as JSON so the runtime can instantiate and orchestrate each layer consistently:
+
+```json
+{
+  "id": "sales-foreground",
+  "name": "Sales Highlights",
+  "depth": 1.4,
+  "parallaxStrength": 0.65,
+  "opacity": 0.85,
+  "blendMode": "screen",
+  "chartConfig": {
+    "$ref": "charts/monthly-sales"
+  },
+  "imageSource": {
+    "type": "canvasSnapshot",
+    "frame": 0,
+    "resolution": { "width": 1600, "height": 900 }
+  },
+  "canvasOverlay": {
+    "enabled": true,
+    "filters": ["glow", "chromaticAberration"]
+  },
+  "interactions": {
+    "hoverHighlight": true,
+    "tooltipAnchor": "chartjs"
+  }
+}
+```
+
+At minimum, a `ChartLayer` needs identifiers (`id`, `name`), depth, parallax strength, opacity, an `imageSource` definition (canvas snapshot, sprite sheet, etc.), and the `chartConfig` reference that ties the layer back to the Chart.js dataset it visualizes. Optional sections describe blend modes, filters applied to the overlay canvas, and interaction affordances. The JSON model keeps rendering, layering, and interaction requirements explicit so teams can generate layers server-side or author them manually.
 
 ## Use Cases
 

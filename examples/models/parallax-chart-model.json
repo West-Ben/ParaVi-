@@ -1,0 +1,88 @@
+{
+  "chartId": "innovation-portfolio-2026",
+  "title": "Innovation Investment vs. Market Adoption",
+  "description": "Mock portfolio data that positions innovation investment velocity against market adoption readiness.",
+  "axes": {
+    "x": { "field": "innovationIndex", "label": "Innovation Investment Velocity" },
+    "y": { "field": "marketAdoption", "label": "Market Adoption Readiness" }
+  },
+  "encoding": {
+    "color": {
+      "field": "riskExposure",
+      "label": "Risk Exposure %",
+      "scale": { "min": 15, "max": 65 }
+    },
+    "size": {
+      "field": "confidence",
+      "label": "Executive Confidence",
+      "scale": { "min": 8, "max": 30 }
+    }
+  },
+  "parallax": {
+    "strength": 0.08,
+    "smoothing": 0.12,
+    "zoom": { "min": 0.7, "max": 1.6, "step": 0.06 }
+  },
+  "layers": [
+    {
+      "id": "background-glow",
+      "name": "Background Glow",
+      "depth": 0.35,
+      "opacity": 0.4,
+      "scale": 1.08,
+      "tint": "#1a45ff",
+      "tintOpacity": 0.35,
+      "blendMode": "screen",
+      "blur": 35,
+      "row": 2,
+      "column": "innovationIndex",
+      "canvas": { "width": 940, "height": 560 }
+    },
+    {
+      "id": "primary-scatter",
+      "name": "Primary Scatter",
+      "depth": 1,
+      "opacity": 0.95,
+      "scale": 1,
+      "tint": "#ffffff",
+      "tintOpacity": 0.08,
+      "blendMode": "normal",
+      "blur": 0,
+      "row": 0,
+      "column": "marketAdoption"
+    },
+    {
+      "id": "foreground-highlights",
+      "name": "Foreground Highlights",
+      "depth": 1.45,
+      "opacity": 0.85,
+      "scale": 1.12,
+      "tint": "#ff8737",
+      "tintOpacity": 0.2,
+      "blendMode": "screen",
+      "blur": 6,
+      "row": 5,
+      "column": "riskExposure"
+    }
+  ],
+  "table": {
+    "columns": [
+      "segment",
+      "innovationIndex",
+      "marketAdoption",
+      "riskExposure",
+      "confidence",
+      "priorityBand"
+    ],
+    "rows": [
+      ["AI Platforms", 92, 68, 22, 0.92, "near-term"],
+      ["Bioinformatics", 74, 52, 38, 0.74, "mid-term"],
+      ["Energy Storage", 81, 61, 28, 0.88, "near-term"],
+      ["Smart Manufacturing", 65, 58, 42, 0.63, "mid-term"],
+      ["Personalized Medicine", 70, 47, 36, 0.61, "exploratory"],
+      ["Space Systems", 58, 34, 55, 0.44, "exploratory"],
+      ["Autonomous Mobility", 84, 39, 48, 0.52, "mid-term"],
+      ["Green Data Centers", 76, 72, 18, 0.9, "near-term"]
+    ]
+  }
+}
