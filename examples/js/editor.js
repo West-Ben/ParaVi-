@@ -1,0 +1,809 @@
+import { ParallaxScene, ParallaxLayer } from '../../src/index.js';
+
+const MODEL_PATH = '../models/parallax-chart-model.json';
+
+const defaultModel = {
+  chartId: 'innovation-portfolio-2026',
+  title: 'Innovation Investment vs. Market Adoption',
+  description: 'Mock portfolio data that positions innovation investment velocity against market adoption readiness.',
+  axes: {
+    x: { field: 'innovationIndex', label: 'Innovation Investment Velocity' },
+    y: { field: 'marketAdoption', label: 'Market Adoption Readiness' }
+  },
+  encoding: {
+    color: {
+      field: 'riskExposure',
+      label: 'Risk Exposure %',
+      scale: { min: 15, max: 65 }
+    },
+    size: {
+      field: 'confidence',
+      label: 'Executive Confidence',
+      scale: { min: 8, max: 30 }
+    }
+  },
+  parallax: {
+    strength: 0.08,
+    smoothing: 0.12,
+    zoom: { min: 0.7, max: 1.6, step: 0.06 }
+  },
+  layers: [
+    {
+      id: 'background-glow',
+      name: 'Background Glow',
+      depth: 0.35,
+      opacity: 0.4,
+      scale: 1.08,
+      tint: '#1a45ff',
+      tintOpacity: 0.35,
+      blendMode: 'screen',
+      blur: 35,
+      row: 2,
+      column: 'innovationIndex',
+      canvas: { width: 940, height: 560 }
+    },
+    {
+      id: 'primary-scatter',
+      name: 'Primary Scatter',
+      depth: 1,
+      opacity: 0.95,
+      scale: 1,
+      tint: '#ffffff',
+      tintOpacity: 0.08,
+      blendMode: 'normal',
+      blur: 0,
+      row: 0,
+      column: 'marketAdoption'
+    },
+    {
+      id: 'foreground-highlights',
+      name: 'Foreground Highlights',
+      depth: 1.45,
+      opacity: 0.85,
+      scale: 1.12,
+      tint: '#ff8737',
+      tintOpacity: 0.2,
+      blendMode: 'screen',
+      blur: 6,
+      row: 5,
+      column: 'riskExposure'
+    }
+  ],
+  table: {
+    columns: [
+      'segment',
+      'innovationIndex',
+      'marketAdoption',
+      'riskExposure',
+      'confidence',
+      'priorityBand'
+    ],
+    rows: [
+      ['AI Platforms', 92, 68, 22, 0.92, 'near-term'],
+      ['Bioinformatics', 74, 52, 38, 0.74, 'mid-term'],
+      ['Energy Storage', 81, 61, 28, 0.88, 'near-term'],
+      ['Smart Manufacturing', 65, 58, 42, 0.63, 'mid-term'],
+      ['Personalized Medicine', 70, 47, 36, 0.61, 'exploratory'],
+      ['Space Systems', 58, 34, 55, 0.44, 'exploratory'],
+      ['Autonomous Mobility', 84, 39, 48, 0.52, 'mid-term'],
+      ['Green Data Centers', 76, 72, 18, 0.9, 'near-term']
+    ]
+  }
+};
+
+const BLEND_MODES = ['normal', 'screen', 'multiply', 'overlay', 'lighten', 'darken'];
+const VISUAL_FIELDS = new Set(['depth', 'opacity', 'scale', 'tint', 'tintOpacity', 'blendMode', 'blur']);
+let layerSeed = 0;
+
+const state = {
+  model: null,
+  rows: [],
+  layers: [],
+  parallaxStrength: 0.08,
+  zoom: 1,
+  parallaxScene: null,
+  snapshotCanvas: null,
+  layerInstances: new Map()
+};
+
+const refs = {
+  parallaxMount: document.getElementById('parallax-preview'),
+  parallaxSlider: document.getElementById('parallax-strength'),
+  parallaxStrengthValue: document.getElementById('parallax-strength-value'),
+  zoomValue: document.getElementById('zoom-value'),
+  layerList: document.getElementById('layer-list'),
+  layerJson: document.getElementById('layer-json'),
+  addLayer: document.getElementById('add-layer'),
+  chartTitle: document.getElementById('chart-title'),
+  chartDescription: document.getElementById('chart-description')
+};
+
+init();
+
+async function init() {
+  state.model = await loadModel();
+  state.rows = inflateTable(state.model.table);
+  state.layers = (state.model.layers || []).map(layer => normalizeLayer({ ...layer }));
+  if (!state.layers.length) {
+    state.layers = buildDefaultLayers().map(layer => normalizeLayer(layer));
+  }
+  layerSeed = state.layers.length;
+  state.parallaxStrength = state.model.parallax?.strength ?? 0.08;
+  state.zoom = 1;
+
+  refs.parallaxSlider.value = state.parallaxStrength.toFixed(2);
+  updateParallaxLabel();
+  updateZoomLabel();
+  renderMetadata();
+  renderLayerControls();
+  updateJsonPreview();
+
+  bindEvents();
+  await buildChartSnapshot();
+}
+
+function bindEvents() {
+  refs.parallaxSlider.addEventListener('input', handleParallaxInput);
+  refs.layerList.addEventListener('input', handleLayerInput);
+  refs.layerList.addEventListener('change', handleLayerInput);
+  refs.layerList.addEventListener('click', handleLayerClick);
+  refs.addLayer.addEventListener('click', handleAddLayer);
+  refs.parallaxMount.addEventListener('wheel', handleZoomWheel, { passive: false });
+}
+
+async function loadModel() {
+  try {
+    const response = await fetch(MODEL_PATH);
+    if (!response.ok) {
+      throw new Error('Failed to load model');
+    }
+    return await response.json();
+  } catch (error) {
+    console.warn('Falling back to inline model.', error);
+    return defaultModel;
+  }
+}
+
+function inflateTable(table) {
+  if (!table || !Array.isArray(table.columns) || !Array.isArray(table.rows)) {
+    return [];
+  }
+
+  return table.rows.map(row => {
+    const record = {};
+    table.columns.forEach((column, index) => {
+      record[column] = row[index];
+    });
+    return record;
+  });
+}
+
+function normalizeLayer(layer) {
+  const columns = state.model?.table?.columns || [];
+  const maxRow = Math.max(state.rows.length - 1, 0);
+
+  layer.id = layer.id || createLayerId();
+  layer.name = layer.name || 'Layer';
+  layer.depth = clampNumber(Number(layer.depth) || 1, 0, 2);
+  layer.opacity = clampNumber(Number(layer.opacity) || 1, 0.05, 1);
+  layer.scale = clampNumber(Number(layer.scale) || 1, 0.6, 2);
+  layer.tint = typeof layer.tint === 'string' ? layer.tint : '#ffffff';
+  layer.tintOpacity = clampNumber(Number(layer.tintOpacity) || 0, 0, 1);
+  layer.blendMode = layer.blendMode || 'normal';
+  layer.blur = clampNumber(Number(layer.blur) || 0, 0, 80);
+
+  const rowValue = Number(layer.row);
+  layer.row = Number.isFinite(rowValue) ? clampNumber(rowValue, 0, maxRow) : 0;
+  layer.column = columns.includes(layer.column) ? layer.column : columns[0] || '';
+
+  return layer;
+}
+
+function renderMetadata() {
+  refs.chartTitle.textContent = state.model?.title || 'Parallax chart';
+  refs.chartDescription.textContent = state.model?.description || '';
+}
+
+function renderLayerControls() {
+  refs.layerList.innerHTML = '';
+  state.layers.forEach(layer => {
+    const item = document.createElement('article');
+    item.className = 'layer-item';
+    item.dataset.layerId = layer.id;
+
+    const header = document.createElement('div');
+    header.className = 'layer-header';
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.value = layer.name;
+    nameInput.dataset.field = 'name';
+
+    const removeButton = document.createElement('button');
+    removeButton.type = 'button';
+    removeButton.className = 'btn secondary';
+    removeButton.textContent = 'Remove';
+    removeButton.dataset.action = 'remove-layer';
+
+    header.append(nameInput, removeButton);
+
+    const fields = document.createElement('div');
+    fields.className = 'layer-fields';
+
+    fields.appendChild(buildField('Depth', buildRange('depth', layer.depth, 0, 2, 0.05)));
+    fields.appendChild(buildField('Opacity', buildRange('opacity', layer.opacity, 0.05, 1, 0.05)));
+    fields.appendChild(buildField('Scale', buildRange('scale', layer.scale, 0.6, 1.6, 0.02)));
+    fields.appendChild(buildField('Tint', buildColor('tint', layer.tint)));
+    fields.appendChild(buildField('Tint opacity', buildRange('tintOpacity', layer.tintOpacity, 0, 0.8, 0.05)));
+    fields.appendChild(buildField('Blend mode', buildSelect('blendMode', BLEND_MODES, layer.blendMode)));
+    fields.appendChild(buildField('Blur', buildRange('blur', layer.blur, 0, 60, 1)));
+    fields.appendChild(buildField('Row', buildRowSelect(layer.row)));
+    fields.appendChild(buildField('Column', buildColumnSelect(layer.column)));
+
+    const dataLine = document.createElement('div');
+    dataLine.className = 'layer-data';
+
+    const dataLabel = document.createElement('span');
+    dataLabel.textContent = 'Data value';
+
+    const dataValue = document.createElement('span');
+    dataValue.dataset.role = 'layer-value';
+    dataValue.textContent = formatLayerValue(getLayerDataValue(layer));
+
+    dataLine.append(dataLabel, dataValue);
+
+    item.append(header, fields, dataLine);
+    refs.layerList.appendChild(item);
+  });
+}
+
+function buildField(labelText, control) {
+  const wrapper = document.createElement('div');
+  wrapper.className = 'field';
+
+  const label = document.createElement('label');
+  label.textContent = labelText;
+
+  wrapper.append(label, control);
+  return wrapper;
+}
+
+function buildRange(field, value, min, max, step) {
+  const input = document.createElement('input');
+  input.type = 'range';
+  input.min = String(min);
+  input.max = String(max);
+  input.step = String(step);
+  input.value = String(value);
+  input.dataset.field = field;
+  return input;
+}
+
+function buildColor(field, value) {
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.value = value || '#ffffff';
+  input.dataset.field = field;
+  return input;
+}
+
+function buildSelect(field, options, selected) {
+  const select = document.createElement('select');
+  select.dataset.field = field;
+  options.forEach(optionValue => {
+    const option = document.createElement('option');
+    option.value = optionValue;
+    option.textContent = optionValue;
+    if (optionValue === selected) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
+  return select;
+}
+
+function buildRowSelect(selected) {
+  const select = document.createElement('select');
+  select.dataset.field = 'row';
+
+  if (!state.rows.length) {
+    const option = document.createElement('option');
+    option.value = '0';
+    option.textContent = 'No rows';
+    select.appendChild(option);
+    select.disabled = true;
+    return select;
+  }
+
+  state.rows.forEach((row, index) => {
+    const option = document.createElement('option');
+    option.value = String(index);
+    const label = row.segment ? `${index + 1}: ${row.segment}` : `Row ${index + 1}`;
+    option.textContent = label;
+    if (index === Number(selected)) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
+
+  return select;
+}
+
+function buildColumnSelect(selected) {
+  const select = document.createElement('select');
+  select.dataset.field = 'column';
+
+  const columns = state.model?.table?.columns || [];
+  if (!columns.length) {
+    const option = document.createElement('option');
+    option.value = '';
+    option.textContent = 'No columns';
+    select.appendChild(option);
+    select.disabled = true;
+    return select;
+  }
+
+  columns.forEach(column => {
+    const option = document.createElement('option');
+    option.value = column;
+    option.textContent = column;
+    if (column === selected) {
+      option.selected = true;
+    }
+    select.appendChild(option);
+  });
+
+  return select;
+}
+
+async function buildChartSnapshot() {
+  if (!window.Chart) {
+    refs.parallaxMount.innerHTML = '<div class="status">Chart.js is required for the demo.</div>';
+    return;
+  }
+
+  window.Chart.defaults.font.family = '"IBM Plex Sans", "Space Grotesk", sans-serif';
+  window.Chart.defaults.color = '#dbe6f4';
+
+  const { width, height } = getCanvasDimensions();
+  const canvas = document.createElement('canvas');
+  canvas.width = width;
+  canvas.height = height;
+
+  const config = buildChartConfig();
+  const chart = new window.Chart(canvas.getContext('2d'), config);
+
+  chart.update();
+  const snapshotCanvas = document.createElement('canvas');
+  snapshotCanvas.width = canvas.width;
+  snapshotCanvas.height = canvas.height;
+  const snapshotContext = snapshotCanvas.getContext('2d');
+  if (snapshotContext) {
+    snapshotContext.drawImage(canvas, 0, 0);
+  }
+  state.snapshotCanvas = snapshotCanvas;
+  chart.destroy();
+
+  buildParallaxLayers();
+}
+
+function getCanvasDimensions() {
+  const layerWithCanvas = state.layers.find(layer => layer.canvas);
+  const fallback = { width: 940, height: 560 };
+  if (!layerWithCanvas || !layerWithCanvas.canvas) {
+    return fallback;
+  }
+  return {
+    width: layerWithCanvas.canvas.width || fallback.width,
+    height: layerWithCanvas.canvas.height || fallback.height
+  };
+}
+
+function buildChartConfig() {
+  const xField = state.model?.axes?.x?.field;
+  const yField = state.model?.axes?.y?.field;
+
+  const domainX = computeDomain(xField);
+  const domainY = computeDomain(yField);
+
+  const dataset = state.rows.map(row => ({
+    x: row[xField],
+    y: row[yField],
+    radius: computeRadius(row),
+    color: computeColor(row)
+  }));
+
+  const datasetConfig = {
+    label: state.model?.title || 'Parallax chart',
+    data: dataset,
+    pointBackgroundColor: dataset.map(point => point.color),
+    pointBorderColor: dataset.map(() => 'rgba(255, 255, 255, 0.45)'),
+    pointRadius: ctx => ctx.raw.radius,
+    pointHoverRadius: ctx => ctx.raw.radius * 1.15,
+    pointBorderWidth: 1.2,
+    showLine: false
+  };
+
+  const backgroundPlugin = {
+    id: 'paraviBackground',
+    beforeDraw(chart) {
+      const { ctx, chartArea } = chart;
+      ctx.save();
+      ctx.fillStyle = '#070c16';
+      ctx.fillRect(0, 0, chart.width, chart.height);
+      ctx.fillStyle = '#0f1a2b';
+      ctx.fillRect(
+        chartArea.left - 24,
+        chartArea.top - 24,
+        chartArea.width + 48,
+        chartArea.height + 48
+      );
+      ctx.restore();
+    }
+  };
+
+  return {
+    type: 'scatter',
+    data: { datasets: [datasetConfig] },
+    options: {
+      responsive: false,
+      maintainAspectRatio: false,
+      animation: false,
+      layout: { padding: 32 },
+      plugins: {
+        legend: { display: false },
+        title: {
+          display: Boolean(state.model?.title),
+          text: state.model?.title,
+          color: '#e6edf8',
+          font: { size: 18, family: '"Space Grotesk", sans-serif' }
+        },
+        tooltip: {
+          callbacks: {
+            label(context) {
+              const raw = context.raw;
+              return `x ${raw.x}, y ${raw.y}`;
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          title: {
+            display: Boolean(state.model?.axes?.x?.label),
+            text: state.model?.axes?.x?.label,
+            color: '#9fb0c3'
+          },
+          grid: { color: 'rgba(255, 255, 255, 0.08)' },
+          ticks: { color: '#9fb0c3' },
+          min: domainX.min,
+          max: domainX.max
+        },
+        y: {
+          title: {
+            display: Boolean(state.model?.axes?.y?.label),
+            text: state.model?.axes?.y?.label,
+            color: '#9fb0c3'
+          },
+          grid: { color: 'rgba(255, 255, 255, 0.08)' },
+          ticks: { color: '#9fb0c3' },
+          min: domainY.min,
+          max: domainY.max
+        }
+      }
+    },
+    plugins: [backgroundPlugin]
+  };
+}
+
+function buildParallaxLayers() {
+  if (!state.snapshotCanvas || !refs.parallaxMount) {
+    return;
+  }
+
+  refs.parallaxMount.textContent = '';
+  const ratio = state.snapshotCanvas.width / state.snapshotCanvas.height;
+  refs.parallaxMount.style.setProperty('--chart-ratio', ratio.toFixed(3));
+
+  if (!state.parallaxScene) {
+    state.parallaxScene = new ParallaxScene(refs.parallaxMount, {
+      parallaxStrength: state.parallaxStrength,
+      smoothing: state.model?.parallax?.smoothing ?? 0.1
+    });
+  } else {
+    state.parallaxScene.clear();
+    state.parallaxScene.setParallaxStrength(state.parallaxStrength);
+  }
+
+  state.layerInstances.clear();
+
+  state.layers.forEach(layerConfig => {
+    const layerElement = document.createElement('div');
+    layerElement.className = 'chart-layer';
+    layerElement.style.mixBlendMode = layerConfig.blendMode || 'normal';
+    layerElement.style.filter = layerConfig.blur ? `blur(${layerConfig.blur}px)` : 'none';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = state.snapshotCanvas.width;
+    canvas.height = state.snapshotCanvas.height;
+
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(state.snapshotCanvas, 0, 0);
+    applyTint(ctx, layerConfig.tint, layerConfig.tintOpacity, canvas.width, canvas.height);
+
+    layerElement.appendChild(canvas);
+
+    const layer = new ParallaxLayer({
+      depth: layerConfig.depth,
+      opacity: layerConfig.opacity,
+      scale: (layerConfig.scale || 1) * state.zoom,
+      element: layerElement
+    });
+
+    state.parallaxScene.addLayer(layer);
+    state.layerInstances.set(layerConfig.id, layer);
+  });
+}
+
+function handleParallaxInput(event) {
+  state.parallaxStrength = Number(event.target.value);
+  if (state.model?.parallax) {
+    state.model.parallax.strength = state.parallaxStrength;
+  }
+  if (state.parallaxScene) {
+    state.parallaxScene.setParallaxStrength(state.parallaxStrength);
+  }
+  updateParallaxLabel();
+  updateJsonPreview();
+}
+
+function handleZoomWheel(event) {
+  if (!state.snapshotCanvas) {
+    return;
+  }
+  event.preventDefault();
+
+  const zoomConfig = state.model?.parallax?.zoom || { min: 0.7, max: 1.6, step: 0.05 };
+  const direction = event.deltaY > 0 ? -1 : 1;
+  state.zoom = clampNumber(state.zoom + direction * zoomConfig.step, zoomConfig.min, zoomConfig.max);
+  updateZoomLabel();
+  applyZoom();
+}
+
+function applyZoom() {
+  state.layerInstances.forEach((layer, id) => {
+    const modelLayer = state.layers.find(item => item.id === id);
+    const baseScale = modelLayer?.scale || 1;
+    layer.scale = baseScale * state.zoom;
+  });
+}
+
+function handleLayerInput(event) {
+  const field = event.target.dataset.field;
+  if (!field) return;
+
+  const wrapper = event.target.closest('.layer-item');
+  if (!wrapper) return;
+
+  const layer = state.layers.find(item => item.id === wrapper.dataset.layerId);
+  if (!layer) return;
+
+  let value = event.target.value;
+
+  if (['depth', 'opacity', 'scale', 'tintOpacity', 'blur'].includes(field)) {
+    value = Number(value);
+  }
+  if (field === 'row') {
+    value = Number(value);
+  }
+
+  if (field === 'name') {
+    layer.name = value.trim() || 'Layer';
+  } else if (field === 'tint') {
+    layer.tint = value;
+  } else if (field === 'blendMode') {
+    layer.blendMode = value;
+  } else {
+    layer[field] = value;
+  }
+
+  normalizeLayer(layer);
+  updateLayerValue(wrapper, layer);
+  updateJsonPreview();
+
+  if (VISUAL_FIELDS.has(field)) {
+    buildParallaxLayers();
+  }
+}
+
+function handleLayerClick(event) {
+  const button = event.target.closest('[data-action="remove-layer"]');
+  if (!button) {
+    return;
+  }
+  const wrapper = button.closest('.layer-item');
+  if (!wrapper) {
+    return;
+  }
+  const layerId = wrapper.dataset.layerId;
+  state.layers = state.layers.filter(layer => layer.id !== layerId);
+  renderLayerControls();
+  updateJsonPreview();
+  buildParallaxLayers();
+}
+
+function handleAddLayer() {
+  const columns = state.model?.table?.columns || [];
+  const next = normalizeLayer({
+    id: createLayerId(),
+    name: `Layer ${state.layers.length + 1}`,
+    depth: clampNumber(0.6 + state.layers.length * 0.2, 0, 2),
+    opacity: 0.85,
+    scale: 1 + state.layers.length * 0.04,
+    tint: '#ffffff',
+    tintOpacity: 0.12,
+    blendMode: 'normal',
+    blur: 0,
+    row: 0,
+    column: columns[0] || ''
+  });
+
+  state.layers.push(next);
+  renderLayerControls();
+  updateJsonPreview();
+  buildParallaxLayers();
+}
+
+function updateLayerValue(wrapper, layer) {
+  const valueElement = wrapper.querySelector('[data-role="layer-value"]');
+  if (!valueElement) {
+    return;
+  }
+  valueElement.textContent = formatLayerValue(getLayerDataValue(layer));
+}
+
+function updateParallaxLabel() {
+  refs.parallaxStrengthValue.textContent = state.parallaxStrength.toFixed(2);
+}
+
+function updateZoomLabel() {
+  refs.zoomValue.textContent = `${state.zoom.toFixed(2)}x`;
+}
+
+function updateJsonPreview() {
+  const preview = {
+    ...state.model,
+    layers: state.layers.map(layer => ({ ...layer }))
+  };
+  refs.layerJson.textContent = JSON.stringify(preview, null, 2);
+}
+
+function getLayerDataValue(layer) {
+  const rowIndex = Number(layer.row);
+  const row = state.rows[rowIndex];
+  if (!row || !layer.column) {
+    return null;
+  }
+  return row[layer.column];
+}
+
+function formatLayerValue(value) {
+  if (value === null || value === undefined) {
+    return 'n/a';
+  }
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? value.toString() : value.toFixed(2);
+  }
+  return String(value);
+}
+
+function computeDomain(field) {
+  if (!field || !state.rows.length) {
+    return { min: 0, max: 100 };
+  }
+  const values = state.rows
+    .map(row => Number(row[field]))
+    .filter(value => Number.isFinite(value));
+  if (!values.length) {
+    return { min: 0, max: 100 };
+  }
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const padding = Math.max(5, (max - min) * 0.1);
+  return { min: Math.floor(min - padding), max: Math.ceil(max + padding) };
+}
+
+function computeColor(row) {
+  const field = state.model?.encoding?.color?.field;
+  if (!field || typeof row[field] !== 'number') {
+    return 'rgba(86, 208, 182, 0.9)';
+  }
+  const scale = state.model?.encoding?.color?.scale || computeDomain(field);
+  const normalized = (row[field] - scale.min) / (scale.max - scale.min || 1);
+  const hue = clampNumber(190 - normalized * 160, 20, 210);
+  return `hsla(${hue}, 70%, 60%, 0.95)`;
+}
+
+function computeRadius(row) {
+  const field = state.model?.encoding?.size?.field;
+  if (!field || typeof row[field] !== 'number') {
+    return 12;
+  }
+  const scale = state.model?.encoding?.size?.scale || computeDomain(field);
+  return scaleValue(row[field], scale.min, scale.max, 8, 26);
+}
+
+function scaleValue(value, inMin, inMax, outMin, outMax) {
+  if (inMax === inMin) {
+    return outMin;
+  }
+  return ((value - inMin) / (inMax - inMin)) * (outMax - outMin) + outMin;
+}
+
+function applyTint(ctx, color, alpha, width, height) {
+  if (!color || !alpha) {
+    return;
+  }
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.globalCompositeOperation = 'source-atop';
+  ctx.fillStyle = color;
+  ctx.fillRect(0, 0, width, height);
+  ctx.restore();
+}
+
+function clampNumber(value, min, max) {
+  if (!Number.isFinite(value)) {
+    return min;
+  }
+  return Math.min(Math.max(value, min), max);
+}
+
+function createLayerId() {
+  layerSeed += 1;
+  return `layer-${layerSeed}`;
+}
+
+function buildDefaultLayers() {
+  return [
+    {
+      id: createLayerId(),
+      name: 'Background Glow',
+      depth: 0.35,
+      opacity: 0.4,
+      scale: 1.08,
+      tint: '#1a45ff',
+      tintOpacity: 0.35,
+      blendMode: 'screen',
+      blur: 35,
+      row: 2,
+      column: 'innovationIndex'
+    },
+    {
+      id: createLayerId(),
+      name: 'Primary Scatter',
+      depth: 1,
+      opacity: 0.95,
+      scale: 1,
+      tint: '#ffffff',
+      tintOpacity: 0.08,
+      blendMode: 'normal',
+      blur: 0,
+      row: 0,
+      column: 'marketAdoption'
+    },
+    {
+      id: createLayerId(),
+      name: 'Foreground Highlights',
+      depth: 1.45,
+      opacity: 0.85,
+      scale: 1.12,
+      tint: '#ff8737',
+      tintOpacity: 0.2,
+      blendMode: 'screen',
+      blur: 6,
+      row: 5,
+      column: 'riskExposure'
+    }
+  ];
+}
